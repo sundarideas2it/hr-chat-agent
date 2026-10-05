@@ -1,7 +1,8 @@
 """Idempotent demo data for the local HR database.
 
-Running this module again updates the canonical leave types, balances, and
-requests. It does not recreate employees who are already present.
+Running this module again updates the canonical leave types, balances,
+requests, and employee profile fields. Existing employee ids and password
+hashes are left in place.
 
 Annual entitlements for CL, SL, and EL come from Revised Leave Policy -
 I2I.pdf (6, 6, and 12 days). Privilege Leave has no annual grant in that
@@ -18,28 +19,33 @@ DEMO_PASSWORD = "Demo@123"
 _EMPLOYEES = (
     {
         "employee_code": "EMP001",
-        "name": "Arun Kumar",
-        "email": "arun.kumar@example.com",
+        "name": "Khavish",
+        "email": "khavish@example.com",
         "department": "Engineering",
         "joining_date": "2021-04-12",
         "employment_type": "Full-time",
     },
     {
         "employee_code": "EMP002",
-        "name": "Priya Sharma",
-        "email": "priya.sharma@example.com",
+        "name": "Vismitha",
+        "email": "vismitha@example.com",
         "department": "Finance",
         "joining_date": "2022-08-01",
         "employment_type": "Full-time",
     },
     {
         "employee_code": "EMP003",
-        "name": "Rahul Verma",
-        "email": "rahul.verma@example.com",
+        "name": "Viji",
+        "email": "viji@example.com",
         "department": "HR",
         "joining_date": "2019-11-15",
         "employment_type": "Full-time",
     },
+)
+
+# Shown on the demo login screen. Every account uses DEMO_PASSWORD.
+DEMO_ACCOUNTS = tuple(
+    (item["employee_code"], item["name"], item["department"]) for item in _EMPLOYEES
 )
 
 # code, name, annual entitlement.
@@ -74,12 +80,20 @@ _OBSOLETE_REQUESTS = (
     ("EMP001", "CL", "2026-02-09", "2026-02-13"),
 )
 
+# Official 2026 company holidays from Holiday List - 2026.pdf.
+# Names follow that list. "Republic day" in the PDF is stored as "Republic Day".
 _HOLIDAYS = (
-    ("2026-01-01", "New Year's Day"),
+    ("2026-01-01", "New Year"),
+    ("2026-01-15", "Pongal"),
     ("2026-01-26", "Republic Day"),
-    ("2026-05-01", "Labour Day"),
+    ("2026-03-21", "Ramzan"),
+    ("2026-04-14", "Tamil New Year"),
+    ("2026-05-01", "May Day"),
     ("2026-08-15", "Independence Day"),
-    ("2026-10-02", "Gandhi Jayanti"),
+    ("2026-09-14", "Vinayakar Chathurthi"),
+    ("2026-10-02", "Gandhi Jayanthi"),
+    ("2026-10-19", "Ayudha Poojai"),
+    ("2026-11-08", "Diwali"),
     ("2026-12-25", "Christmas"),
 )
 
@@ -104,12 +118,25 @@ def seed() -> None:
             row["employee_code"]
             for row in connection.execute("SELECT employee_code FROM employees")
         }
-        missing_employees = [
-            employee
-            for employee in _EMPLOYEES
-            if employee["employee_code"] not in existing_codes
-        ]
-        for employee in missing_employees:
+        for employee in _EMPLOYEES:
+            if employee["employee_code"] in existing_codes:
+                connection.execute(
+                    """
+                    UPDATE employees
+                    SET name = ?, email = ?, department = ?,
+                        joining_date = ?, employment_type = ?
+                    WHERE employee_code = ?
+                    """,
+                    (
+                        employee["name"],
+                        employee["email"],
+                        employee["department"],
+                        employee["joining_date"],
+                        employee["employment_type"],
+                        employee["employee_code"],
+                    ),
+                )
+                continue
             connection.execute(
                 """
                 INSERT INTO employees (
@@ -197,12 +224,19 @@ def seed() -> None:
                 ),
             )
 
+        official_dates = [holiday_date for holiday_date, _name in _HOLIDAYS]
+        placeholders = ", ".join("?" for _ in official_dates)
+        connection.execute(
+            f"DELETE FROM holidays WHERE holiday_date NOT IN ({placeholders})",
+            official_dates,
+        )
         for holiday_date, name in _HOLIDAYS:
             connection.execute(
                 """
                 INSERT INTO holidays (holiday_date, name)
                 VALUES (?, ?)
-                ON CONFLICT(holiday_date) DO NOTHING
+                ON CONFLICT(holiday_date) DO UPDATE SET
+                    name = excluded.name
                 """,
                 (holiday_date, name),
             )

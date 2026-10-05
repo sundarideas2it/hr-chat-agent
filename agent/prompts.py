@@ -1,10 +1,50 @@
-"""Prompt templates for the HR Chat Agent.
+"""Wording owned by the HR Chat Agent.
 
-Future responsibility:
-    Hold the system prompt and task prompts that require answers to be
-    grounded in retrieved policy passages and tool results. Prompts will
-    also state that the signed-in employee comes from the application
-    session and must not be taken from model-written tool arguments.
-
-Not implemented in this foundation step.
+Gemini is used only to phrase an answer from retrieved policy passages.
+Leave balances, day counts, and eligibility are written from tool results
+by the graph, using the sentences below. The signed-in employee comes from
+the application session and is never a model-chosen tool argument.
 """
+
+from __future__ import annotations
+
+CROSS_EMPLOYEE_REFUSAL = (
+    "I can only access HR information associated with your authenticated "
+    "employee account."
+)
+
+UNSUPPORTED_SALARY_REPLY = (
+    "Salary and payroll information is not available through the HR Chat Agent. "
+    "I can help with your leave balance, leave history, leave-day calculations, "
+    "leave eligibility, and HR policy questions."
+)
+
+POLICY_QUOTA_UNAVAILABLE = (
+    "The policy knowledge service is temporarily unavailable because the "
+    "configured LLM quota has been reached. Database and leave-management "
+    "tools are still available."
+)
+
+UNKNOWN_REQUEST_REPLY = (
+    "I can help with your leave balance, leave history, leave-day calculations, "
+    "leave eligibility, and HR policy questions."
+)
+
+APPROVAL_REPLY_NOTE = (
+    "Manager approval is still required. Eligibility does not mean the leave "
+    "is approved."
+)
+
+WEEKLY_OFF_REPLY_NOTE = (
+    "Note: The leave policy excludes weekly offs, but it does not define which "
+    "weekdays are weekly offs. Holiday List - 2026.pdf says mandatory leave is "
+    "enforced on Saturdays and Sundays. The documents do not explicitly state "
+    "that a weekly off is Saturday or Sunday, so no weekend assumption was applied."
+)
+
+TOOL_POLICY_SEARCH = "Policy Search"
+TOOL_LEAVE_BALANCE = "Leave Balance"
+TOOL_LEAVE_HISTORY = "Leave History"
+TOOL_LEAVE_CALCULATOR = "Leave Calculator"
+TOOL_ELIGIBILITY = "Eligibility Checker"
+TOOL_HOLIDAY_LOOKUP = "Holiday Lookup"

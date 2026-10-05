@@ -140,6 +140,25 @@ def init_db() -> None:
         connection.executescript(_SCHEMA)
 
 
+def get_public_employee(employee_id: int) -> dict | None:
+    """Return the public profile for an active employee id."""
+    if isinstance(employee_id, bool) or not isinstance(employee_id, int):
+        return None
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id, employee_code, name, email, department,
+                   joining_date, employment_type, is_active
+            FROM employees
+            WHERE id = ? AND is_active = 1
+            """,
+            (employee_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {field: row[field] for field in PUBLIC_EMPLOYEE_FIELDS}
+
+
 def authenticate(employee_code: str, password: str) -> dict | None:
     """Return the signed-in employee, or None when the credentials fail.
 

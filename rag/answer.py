@@ -27,9 +27,18 @@ When the context does contain the answer, reply with a short factual answer and 
 """
 
 
-def answer_policy_question(question: str, k: int = 4) -> dict:
-    """Retrieve policy chunks and ask Gemini to answer from those chunks only."""
-    matches = search_policy(question, k=k)
+def answer_policy_question(
+    question: str,
+    k: int = 4,
+    matches: list[dict] | None = None,
+) -> dict:
+    """Retrieve policy chunks and ask Gemini to answer from those chunks only.
+
+    Pass ``matches`` when the caller already retrieved them, so this function
+    does not embed the question a second time.
+    """
+    if matches is None:
+        matches = search_policy(question, k=k)
     if not matches:
         return {
             "answer": NOT_FOUND_MESSAGE,
@@ -44,6 +53,10 @@ def answer_policy_question(question: str, k: int = 4) -> dict:
             model=CHAT_MODEL,
             temperature=0,
             thinking_budget=0,
+            # 1 means the first request only. 0 is treated as the provider
+            # default, which retries a quota error for several minutes.
+            max_retries=1,
+            timeout=30,
         )
         response = model.invoke(
             [

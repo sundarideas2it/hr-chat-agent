@@ -31,7 +31,10 @@ def search_policy(query: str, k: int = 4) -> list[dict]:
     try:
         store = Chroma(
             collection_name=COLLECTION_NAME,
-            embedding_function=GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL),
+            embedding_function=GoogleGenerativeAIEmbeddings(
+                model=EMBEDDING_MODEL,
+                client_args={"timeout": 30},
+            ),
             persist_directory=str(CHROMA_DIR),
         )
         matches = store.similarity_search_with_relevance_scores(question, k=k)

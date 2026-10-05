@@ -1,8 +1,18 @@
-"""Policy search tool.
+"""Policy search tool for the HR Chat Agent.
 
-Future responsibility:
-    Expose ``search_hr_policy``, which queries the policy vector store and
-    returns passages the agent can cite in its answer.
-
-Not implemented in this foundation step.
+This wraps the existing retriever. It does not call the chat model and it
+does not read employee records.
 """
+
+from __future__ import annotations
+
+from rag.retriever import search_policy
+
+
+def search_hr_policy(query: str, k: int = 4) -> list[dict]:
+    """Return policy passages for a question.
+
+    The result is evidence for an answer. It is not itself an employee record
+    and it has no employee id argument.
+    """
+    return search_policy(query, k=k)

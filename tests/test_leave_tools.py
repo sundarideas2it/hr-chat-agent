@@ -10,7 +10,7 @@ from database.db import get_connection
 from database.seed import seed
 from tools.eligibility import check_leave_eligibility
 from tools.errors import LeaveToolError
-from tools.holidays import get_holidays_between
+from tools.holidays import get_holidays, get_holidays_between
 from tools.leave_balance import get_leave_balance, get_leave_history
 from tools.leave_calculator import calculate_leave_days
 
@@ -81,8 +81,8 @@ class LeaveToolTests(unittest.TestCase):
         result = calculate_leave_days("2026-01-24", "2026-01-27")
         self.assertEqual(result["calendar_days"], 4)
         self.assertEqual(result["chargeable_leave_days"], 3)
-        excluded = {item["date"] for item in result["excluded_dates"]}
-        self.assertEqual(excluded, {"2026-01-26"})
+        excluded = {item["date"]: item["name"] for item in result["excluded_dates"]}
+        self.assertEqual(excluded, {"2026-01-26": "Republic Day"})
         self.assertNotIn("2026-01-24", excluded)
         self.assertNotIn("2026-01-25", excluded)
         self.assertTrue(any("section 7.3" in rule for rule in result["applied_rules"]))
@@ -92,7 +92,51 @@ class LeaveToolTests(unittest.TestCase):
     def test_holiday_lookup(self) -> None:
         holidays = get_holidays_between("2026-01-01", "2026-01-26")
         names = [item["name"] for item in holidays]
-        self.assertEqual(names, ["New Year's Day", "Republic Day"])
+        self.assertEqual(names, ["New Year", "Pongal", "Republic Day"])
+
+    def test_official_2026_holidays_replace_the_demo_calendar(self) -> None:
+        seed()
+        expected = {
+            "2026-01-01": "New Year",
+            "2026-01-15": "Pongal",
+            "2026-01-26": "Republic Day",
+            "2026-03-21": "Ramzan",
+            "2026-04-14": "Tamil New Year",
+            "2026-05-01": "May Day",
+            "2026-08-15": "Independence Day",
+            "2026-09-14": "Vinayakar Chathurthi",
+            "2026-10-02": "Gandhi Jayanthi",
+            "2026-10-19": "Ayudha Poojai",
+            "2026-11-08": "Diwali",
+            "2026-12-25": "Christmas",
+        }
+        with get_connection() as connection:
+            rows = connection.execute(
+                "SELECT holiday_date, name FROM holidays ORDER BY holiday_date"
+            ).fetchall()
+        actual = {row["holiday_date"]: row["name"] for row in rows}
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(rows), 12)
+        self.assertNotIn("Labour Day", actual.values())
+        self.assertNotIn("New Year's Day", actual.values())
+        self.assertNotIn("Gandhi Jayanti", actual.values())
+
+        january = get_holidays(2026, 1)
+        self.assertEqual(
+            [(item["date"], item["name"]) for item in january["holidays"]],
+            [
+                ("2026-01-01", "New Year"),
+                ("2026-01-15", "Pongal"),
+                ("2026-01-26", "Republic Day"),
+            ],
+        )
+        self.assertEqual(january["source"], "Holiday List - 2026.pdf")
+
+        from rag.ingest import discover_policy_files
+
+        names = {path.name for path in discover_policy_files()}
+        self.assertIn("Holiday List - 2026.pdf", names)
+        self.assertIn("Revised Leave Policy - I2I.pdf", names)
 
     def test_cl_within_balance_is_eligible_but_not_approved(self) -> None:
         result = check_leave_eligibility(self.emp1, "CL", 4)

@@ -1,22 +1,38 @@
 """Streamlit entry point for the HR Chat Agent.
 
 Employees sign in with an employee code and password. The signed-in
-employee record is stored in session state. A temporary policy question
-box answers from retrieved HR documents. Chat is not implemented yet.
+employee record is stored in session state and passed into the LangGraph
+agent. Chat history stays in that session and is cleared on logout.
 """
 
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
-from database.db import authenticate, init_db
-from database.seed import DEMO_PASSWORD, seed
+from agent.graph import run_agent
+from database.db import authenticate, get_public_employee, init_db
+from database.seed import DEMO_ACCOUNTS, DEMO_PASSWORD, seed
 
-_DEMO_EMPLOYEE_CODE = "EMP001"
-
+_EXAMPLE_QUESTIONS = (
+    "What is my Casual Leave balance?",
+    "What is the Casual Leave policy?",
+    "Can I take Casual Leave from 24 Jan to 27 Jan 2026?",
+    "Show my leave history.",
+)
+_CHAT_STATE_KEYS = (
+    "messages",
+    "chat_employee_id",
+    "leave_balance_result",
+    "leave_history_result",
+    "leave_calculation_result",
+    "leave_calculation_error",
+    "leave_eligibility_result",
+    "leave_eligibility_count",
+    "leave_eligibility_error",
+)
 
 def _ensure_database() -> None:
     init_db()
@@ -38,50 +54,80 @@ def _render_login() -> None:
             st.rerun()
 
     st.subheader("Demo Credentials")
-    st.write(f"Employee ID: {_DEMO_EMPLOYEE_CODE}")
-    st.write(f"Password: {DEMO_PASSWORD}")
+    st.write(f"Password for every account: {DEMO_PASSWORD}")
+    for employee_code, name, department in DEMO_ACCOUNTS:
+        st.write(f"{employee_code} — {name}, {department}")
 
 
 def _render_home(employee: dict) -> None:
+    _sync_chat_owner(employee)
+    with st.sidebar:
+        st.subheader(employee["name"])
+        st.write(f"Employee ID: {employee['employee_code']}")
+        st.write(employee["department"])
+        if st.button("Logout"):
+            _logout()
     st.write(f"Welcome, {employee['name']}")
-    st.write(f"Employee ID: {employee['employee_code']}")
-    st.write(f"Department: {employee['department']}")
-    if st.button("Logout"):
-        st.session_state["employee"] = None
-        st.rerun()
-    st.write("HR Assistant chat will appear here.")
-    _render_policy_assistant()
-    _render_leave_tools(employee)
+    st.write(f"{employee['department']} | {employee['employee_code']}")
+    _render_chat(employee)
+    with st.expander("Developer Demo"):
+        st.caption("Direct tool checks for the signed-in employee.")
+        _render_leave_tools(employee)
 
 
-def _render_policy_assistant() -> None:
-    st.subheader("HR Policy Assistant")
-    st.caption(
-        "Answers use only the HR policy documents in the policies folder."
-    )
-    with st.form("policy_question_form"):
-        question = st.text_input("Ask an HR policy question")
-        asked = st.form_submit_button("Ask HR")
+def _render_chat(employee: dict) -> None:
+    st.caption("Examples — these are not sent until you type one.")
+    for question in _EXAMPLE_QUESTIONS:
+        st.write(f"- {question}")
 
-    if not asked:
-        return
-    if not question.strip():
-        st.error("Enter a policy question.")
+    for message in st.session_state["messages"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            tools_used = message.get("tools_used") or []
+            if tools_used:
+                st.markdown("Tools used:\n" + "\n".join(f"- {name}" for name in tools_used))
+
+    prompt = st.chat_input("Ask about leave or HR policy")
+    if not prompt:
         return
 
+    history = list(st.session_state["messages"])
+    st.session_state["messages"].append({"role": "user", "content": prompt})
     try:
-        from rag.answer import answer_policy_question
-
-        result = answer_policy_question(question)
+        result = run_agent(message=prompt, employee=employee, history=history)
+        reply = result["reply"]
+        tools_used = result["tools_used"]
+        context = result["context"]
     except Exception as exc:
-        st.error(_public_error_message(exc))
-        return
+        reply = _public_error_message(exc)
+        tools_used = []
+        context = {}
+    st.session_state["messages"].append(
+        {
+            "role": "assistant",
+            "content": reply,
+            "tools_used": tools_used,
+            "context": context,
+        }
+    )
+    st.rerun()
 
-    st.write(result["answer"])
-    if result["sources"]:
-        st.write("Source:")
-        for citation in result["sources"]:
-            st.write(citation)
+
+def _sync_chat_owner(employee: dict) -> None:
+    owner = st.session_state.get("chat_employee_id")
+    if owner != employee["id"]:
+        st.session_state["messages"] = []
+        st.session_state["chat_employee_id"] = employee["id"]
+        for key in _CHAT_STATE_KEYS:
+            if key not in {"messages", "chat_employee_id"}:
+                st.session_state.pop(key, None)
+
+
+def _logout() -> None:
+    st.session_state["employee"] = None
+    for key in _CHAT_STATE_KEYS:
+        st.session_state.pop(key, None)
+    st.rerun()
 
 
 def _render_leave_tools(employee: dict) -> None:
@@ -154,8 +200,8 @@ def _render_leave_tools(employee: dict) -> None:
     if st.button("Calculate Leave"):
         try:
             st.session_state["leave_calculation_result"] = calculate_leave_days(
-                start_date.isoformat(),
-                end_date.isoformat(),
+                _widget_iso_date(start_date, "start date"),
+                _widget_iso_date(end_date, "end date"),
             )
             st.session_state["leave_calculation_error"] = None
         except LeaveToolError as exc:
@@ -170,7 +216,10 @@ def _render_leave_tools(employee: dict) -> None:
 
     if st.button("Check Eligibility"):
         try:
-            counted = calculate_leave_days(start_date.isoformat(), end_date.isoformat())
+            counted = calculate_leave_days(
+                _widget_iso_date(start_date, "start date"),
+                _widget_iso_date(end_date, "end date"),
+            )
             eligibility = check_leave_eligibility(
                 employee_id,
                 selected_code,
@@ -198,6 +247,17 @@ def _render_leave_tools(employee: dict) -> None:
             st.warning(warning)
 
 
+def _widget_iso_date(value: object, label: str) -> str:
+    """Return YYYY-MM-DD, or a tool error when the date widget is empty."""
+    from tools.errors import LeaveToolError
+
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.isoformat()
+    raise LeaveToolError(f"Enter a valid {label}.")
+
+
 def _public_error_message(exc: Exception) -> str:
     message = str(exc).strip() or "The policy assistant could not complete the request."
     secret = os.environ.get("GOOGLE_API_KEY")
@@ -214,15 +274,23 @@ def main() -> None:
     _ensure_database()
 
     st.title("HR Chat Agent")
-    st.header("AI-powered Employee HR Assistant")
 
     if "employee" not in st.session_state:
         st.session_state["employee"] = None
 
     employee = st.session_state["employee"]
     if employee:
+        refreshed = get_public_employee(int(employee["id"]))
+        if refreshed is None:
+            st.session_state["employee"] = None
+            employee = None
+        else:
+            st.session_state["employee"] = refreshed
+            employee = refreshed
+    if employee:
         _render_home(employee)
     else:
+        st.header("AI-powered Employee HR Assistant")
         _render_login()
 
 

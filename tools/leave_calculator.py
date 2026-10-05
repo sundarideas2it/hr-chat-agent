@@ -1,9 +1,11 @@
 """Deterministic leave-day count from the supplied leave policy.
 
 Section 7.3 of Revised Leave Policy - I2I.pdf says a public holiday or a
-weekly off inside an approved leave period is not counted as leave. The PDF
-does not define which weekdays are weekly offs, so this function excludes
-only holidays stored in SQLite and reports that limit.
+weekly off inside an approved leave period is not counted as leave. Holiday
+dates come from the SQLite holidays table, loaded from Holiday List - 2026.pdf.
+That list says mandatory leave is enforced on Saturdays and Sundays, but it
+does not define "weekly off" as Saturday or Sunday. This function therefore
+excludes only SQLite holidays and reports that limit. It does not call Gemini.
 """
 
 from __future__ import annotations

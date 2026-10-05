@@ -1,5 +1,8 @@
-"""LangGraph package for the HR Chat Agent.
+"""LangGraph HR Chat Agent.
 
-This package will hold conversation state, prompts, and the agent graph.
-No workflow is implemented in this foundation step.
+``run_agent`` accepts the signed-in employee from the application session.
 """
+
+from agent.graph import run_agent
+
+__all__ = ["run_agent"]
