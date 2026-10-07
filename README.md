@@ -111,7 +111,7 @@ These rules are implemented because the supplied PDF states them:
 - A declared public holiday or a weekly off inside an approved leave period is not counted as leave (section 7.3, page 8; FAQ 19, page 11).
 - Leave must be requested in advance and approved by the reporting manager (section 7.1, page 7; FAQ 15, page 10).
 
-The leave policy does not say which weekdays are weekly offs. `Holiday List - 2026.pdf` says mandatory leave is enforced on Saturdays and Sundays. The two documents do not explicitly define “weekly off” as Saturday or Sunday, so the calculator does not remove those days. It does not state a sandwich rule or a maximum number of consecutive Casual Leave days. Those limits are not applied.
+Saturday and Sunday are weekly offs because the office is closed on those days. The calculator does not count them as leave. It does not state a sandwich rule or a maximum number of consecutive Casual Leave days. Those limits are not applied.
 
 ## Conversation context
 
@@ -165,7 +165,7 @@ Routing, balances, history, holidays, day counts, and eligibility do not call Ge
 ## Limitations
 
 - Weekly offs are described in the PDF but the weekdays are not defined, so they are not excluded. The answer says so.
-- Saturday and Sunday are named for mandatory leave in the holiday list, but they are not defined as weekly offs, so they stay chargeable.
+- Saturday and Sunday are weekly offs and are not chargeable. A public holiday on a weekday is also excluded.
 - Privilege Leave balances are sample retained data, not a new annual entitlement.
 - The database has no notice-period flag, so that policy restriction is not applied.
 - No salary, payroll, or approval-workflow tools exist. Eligibility is not an approved leave request.

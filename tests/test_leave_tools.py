@@ -77,17 +77,33 @@ class LeaveToolTests(unittest.TestCase):
         with self.assertRaises(LeaveToolError):
             calculate_leave_days("2026-03-02", "2026-03-01")
 
-    def test_holiday_is_excluded_and_weekend_is_not(self) -> None:
+    def test_holiday_and_weekend_are_excluded(self) -> None:
         result = calculate_leave_days("2026-01-24", "2026-01-27")
         self.assertEqual(result["calendar_days"], 4)
-        self.assertEqual(result["chargeable_leave_days"], 3)
+        self.assertEqual(result["chargeable_leave_days"], 1)
         excluded = {item["date"]: item["name"] for item in result["excluded_dates"]}
-        self.assertEqual(excluded, {"2026-01-26": "Republic Day"})
-        self.assertNotIn("2026-01-24", excluded)
-        self.assertNotIn("2026-01-25", excluded)
+        self.assertEqual(
+            excluded,
+            {
+                "2026-01-24": "Saturday",
+                "2026-01-25": "Sunday",
+                "2026-01-26": "Republic Day",
+            },
+        )
+        reasons = {item["date"]: item["reason"] for item in result["excluded_dates"]}
+        self.assertEqual(reasons["2026-01-24"], "weekly off")
+        self.assertEqual(reasons["2026-01-26"], "public holiday")
         self.assertTrue(any("section 7.3" in rule for rule in result["applied_rules"]))
-        self.assertTrue(any("weekly off" in warning for warning in result["warnings"]))
         self.assertEqual(date(2026, 1, 24).weekday(), 5)
+
+    def test_saturday_and_sunday_are_not_chargeable(self) -> None:
+        result = calculate_leave_days("2026-10-10", "2026-10-11")
+        self.assertEqual(result["calendar_days"], 2)
+        self.assertEqual(result["chargeable_leave_days"], 0)
+        self.assertEqual(
+            [item["name"] for item in result["excluded_dates"]],
+            ["Saturday", "Sunday"],
+        )
 
     def test_holiday_lookup(self) -> None:
         holidays = get_holidays_between("2026-01-01", "2026-01-26")

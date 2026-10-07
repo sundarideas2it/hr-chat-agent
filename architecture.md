@@ -77,7 +77,7 @@ Gemini embeds policy chunks and phrases policy answers. The chat model and embed
 
 ### Business-rule tools
 
-`calculate_leave_days` counts inclusive calendar days and excludes public holidays stored in SQLite, because section 7.3 of the supplied leave PDF says a public holiday inside the leave period is not counted. The holiday dates come from `Holiday List - 2026.pdf`. That list says mandatory leave is enforced on Saturdays and Sundays. The leave policy says weekly offs are not counted, but neither document defines a weekly off as Saturday or Sunday, so those days are not removed and the result includes that warning. `get_holidays` answers factual calendar questions from SQLite.
+`calculate_leave_days` counts inclusive calendar days and excludes public holidays stored in SQLite, because section 7.3 of the supplied leave PDF says a public holiday or a weekly off inside the leave period is not counted. Saturday and Sunday are weekly offs because the office is closed on those days. A public holiday that falls on a weekend is excluded once. `get_holidays` answers factual calendar questions from SQLite.
 
 `check_leave_eligibility` checks that the leave type exists, the request is positive, and the remaining balance is sufficient. It attaches the PDF constraints for that leave type, including advance manager approval. Eligible means the verified checks passed. It does not mean the leave is approved.
 

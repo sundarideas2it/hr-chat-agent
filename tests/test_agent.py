@@ -107,11 +107,100 @@ class AgentGraphTests(unittest.TestCase):
         self.assertEqual(result["tools_used"], ["Leave Calculator"])
         self.assertIn("4 calendar days", result["reply"])
         self.assertIn("Republic Day is excluded as a public holiday.", result["reply"])
-        self.assertIn("Chargeable leave: 3 days.", result["reply"])
-        self.assertIn("no weekend assumption was applied", result["reply"])
-        self.assertIn("section 7.3", result["reply"])
-        self.assertNotIn("Saturday is excluded", result["reply"])
-        self.assertNotIn("Sunday is excluded", result["reply"])
+        self.assertIn("Saturday and Sunday are excluded as weekly offs.", result["reply"])
+        self.assertIn("Chargeable leave: 1 day.", result["reply"])
+        self.assertNotIn("section 7.3", result["reply"])
+        self.assertNotIn("Rule:", result["reply"])
+        self.assertNotIn("no weekend assumption was applied", result["reply"])
+
+    def test_one_day_leave_then_casual_uses_that_date(self) -> None:
+        first = run_agent("Can I take leave on 19 oct?", self.employee)
+        self.assertIn("which leave type", first["reply"].lower())
+        self.assertEqual(first["context"]["start_date"], "2026-10-19")
+        self.assertEqual(first["context"]["end_date"], "2026-10-19")
+        history = [
+            {
+                "role": "user",
+                "content": "Can I take leave from 11 October 2026 to 12 October 2026?",
+            },
+            {
+                "role": "assistant",
+                "content": "Tell me which leave type you mean, such as Casual Leave or Sick Leave.",
+                "context": {
+                    "intent": "eligibility",
+                    "leave_type": None,
+                    "start_date": "2026-10-11",
+                    "end_date": "2026-10-12",
+                    "requested_days": None,
+                    "year": 2026,
+                    "month": 10,
+                },
+            },
+            {"role": "user", "content": "Can I take leave on 19 oct?"},
+            {
+                "role": "assistant",
+                "content": first["reply"],
+                "context": first["context"],
+            },
+        ]
+        result = run_agent("cASUAL", self.employee, history=history)
+        self.assertEqual(result["context"]["leave_type"], "CL")
+        self.assertEqual(result["context"]["start_date"], "2026-10-19")
+        self.assertEqual(result["context"]["end_date"], "2026-10-19")
+        self.assertIn("19 October 2026", result["reply"])
+        self.assertIn("Ayudha Poojai", result["reply"])
+        self.assertIn("Chargeable leave: 0 days.", result["reply"])
+        self.assertNotIn("11–12 October", result["reply"])
+        self.assertNotIn("12 October", result["reply"])
+
+    def test_leave_type_reply_keeps_the_dates_just_asked(self) -> None:
+        first = run_agent(
+            "Can I take leave from 10 October 2026 to 11 October 2026?",
+            self.employee,
+        )
+        self.assertIn("which leave type", first["reply"].lower())
+        history = [
+            {
+                "role": "user",
+                "content": "Can I take leave from 10 October 2026 to 11 October 2026?",
+            },
+            {
+                "role": "assistant",
+                "content": first["reply"],
+                "context": first["context"],
+            },
+        ]
+        result = run_agent("casual leave", self.employee, history=history)
+        self.assertEqual(result["context"]["leave_type"], "CL")
+        self.assertEqual(result["context"]["start_date"], "2026-10-10")
+        self.assertEqual(result["context"]["end_date"], "2026-10-11")
+        self.assertIn("Chargeable leave: 0 days.", result["reply"])
+        self.assertIn("No Casual Leave is charged.", result["reply"])
+        self.assertNotIn("I can help with your leave balance", result["reply"])
+
+        lost = run_agent("casual leave", self.employee, history=history + [
+            {"role": "user", "content": "casual leave"},
+            {
+                "role": "assistant",
+                "content": "I can help with your leave balance, leave history, leave-day calculations, leave eligibility, and HR policy questions.",
+                "context": {"intent": "unknown"},
+            },
+        ])
+        self.assertEqual(lost["context"]["start_date"], "2026-10-10")
+        self.assertIn("No Casual Leave is charged.", lost["reply"])
+
+    def test_weekend_casual_leave_is_not_charged(self) -> None:
+        result = run_agent(
+            "Can I take casual leave from 10 October to 11 October 2026?",
+            self.employee,
+        )
+        self.assertIn("2 calendar days", result["reply"])
+        self.assertIn("Saturday and Sunday are excluded as weekly offs.", result["reply"])
+        self.assertIn("Chargeable leave: 0 days.", result["reply"])
+        self.assertIn("No Casual Leave is charged.", result["reply"])
+        self.assertNotIn("requires 2", result["reply"])
+        self.assertNotIn("you are eligible", result["reply"].lower())
+        self.assertNotIn("not eligible", result["reply"].lower())
 
     def test_eligibility_for_the_january_range_is_within_balance(self) -> None:
         result = run_agent(
@@ -122,14 +211,14 @@ class AgentGraphTests(unittest.TestCase):
             result["tools_used"],
             ["Leave Calculator", "Leave Balance", "Eligibility Checker"],
         )
-        self.assertIn("requires 3 chargeable days", result["reply"])
+        self.assertIn("requires 1 chargeable day", result["reply"])
         self.assertIn("You have 4 days of Casual Leave remaining", result["reply"])
         self.assertIn("you are eligible based on the available balance", result["reply"])
         self.assertIn("Eligibility does not mean the leave is approved", result["reply"])
-        self.assertIn("reporting manager", result["reply"].lower())
+        self.assertIn("manager approval", result["reply"].lower())
         self.assertNotIn("not eligible", result["reply"].lower())
         self.assertEqual(result["context"]["leave_type"], "CL")
-        self.assertEqual(result["context"]["requested_days"], 3)
+        self.assertEqual(result["context"]["requested_days"], 1)
 
     def test_follow_up_for_five_days_is_not_eligible(self) -> None:
         first = run_agent(
@@ -155,7 +244,7 @@ class AgentGraphTests(unittest.TestCase):
         self.assertIn("insufficient", result["reply"].lower())
         self.assertIn("5 days", result["reply"])
         self.assertIn("4 days", result["reply"])
-        self.assertIn("reporting manager", result["reply"].lower())
+        self.assertIn("manager approval", result["reply"].lower())
 
     def test_sick_leave_follow_up_uses_the_previous_balance_question(self) -> None:
         first = run_agent("What is my casual leave balance?", self.employee)
@@ -365,10 +454,11 @@ class AgentGraphTests(unittest.TestCase):
         )
         self.assertIn("4 calendar days", eligibility["reply"])
         self.assertIn("Republic Day is excluded as a public holiday.", eligibility["reply"])
-        self.assertIn("Chargeable leave: 3 days.", eligibility["reply"])
+        self.assertIn("Saturday and Sunday are excluded as weekly offs.", eligibility["reply"])
+        self.assertIn("Chargeable leave: 1 day.", eligibility["reply"])
         self.assertIn("you are eligible based on the available balance", eligibility["reply"])
-        self.assertIn("no weekend assumption was applied", eligibility["reply"])
-        self.assertIn("reporting manager", eligibility["reply"].lower())
+        self.assertNotIn("no weekend assumption was applied", eligibility["reply"])
+        self.assertIn("manager approval", eligibility["reply"].lower())
         self.assertIn("not eligible", follow_up["reply"].lower())
         self.assertIn("insufficient", follow_up["reply"].lower())
         self.assertIn("5 days", follow_up["reply"])

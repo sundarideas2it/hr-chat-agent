@@ -129,8 +129,23 @@ def classify_message(message: str, employee: dict, history: list[dict] | None) -
     if date_status == "invalid":
         return _decision(explicit or "calculation", error=date_error)
 
+    if explicit is None and parsed_type and not _waiting_for_leave_type(previous):
+        # A newer question wins. Do not reuse dates from an older request.
+        if previous.get("intent") not in {"eligibility", "calculation", "balance"}:
+            pending = _context_waiting_for_leave_type(history or [])
+            if pending:
+                previous = pending
+
+    # "Casual leave" after "which leave type?" continues that request.
+    supplies_type = (
+        explicit is None
+        and parsed_type is not None
+        and _waiting_for_leave_type(previous)
+    )
+    continues = follow_up or supplies_type
+
     intent = explicit
-    if intent is None and follow_up:
+    if intent is None and continues:
         intent = previous.get("intent")
     if (
         intent == "calculation"
@@ -157,11 +172,11 @@ def classify_message(message: str, employee: dict, history: list[dict] | None) -
     named_month = _calendar_month(text)
     if date_status == "found":
         resolved_start, resolved_end = start_date, end_date
-    elif intent == "holiday" and date_status == "single":
+    elif date_status == "single" and intent in {"eligibility", "calculation", "holiday"}:
         resolved_start = resolved_end = start_date
     elif follow_up and parsed_days is not None:
         resolved_start, resolved_end = None, None
-    elif follow_up and named_month is None:
+    elif continues and named_month is None:
         resolved_start = previous.get("start_date")
         resolved_end = previous.get("end_date")
     else:
@@ -171,20 +186,20 @@ def classify_message(message: str, employee: dict, history: list[dict] | None) -
         month = date.fromisoformat(start_date).month
     elif named_month is not None:
         month = named_month
-    elif follow_up:
+    elif continues:
         month = previous.get("month")
     else:
         month = None
 
     if parsed_days is not None:
         requested_days = parsed_days
-    elif follow_up and date_status != "found":
+    elif continues and date_status != "found":
         requested_days = previous.get("requested_days")
     else:
         requested_days = None
 
     year = _year(text)
-    if year is None and follow_up:
+    if year is None and continues:
         year = previous.get("year")
 
     return _decision(
@@ -209,6 +224,24 @@ def _decision(intent: str, error: str | None = None, **slots: object) -> dict:
         "month": slots.get("month"),
         "error": error,
     }
+
+
+def _waiting_for_leave_type(context: dict) -> bool:
+    return (
+        context.get("intent") in {"eligibility", "calculation", "balance"}
+        and not context.get("leave_type")
+        and bool(context.get("start_date"))
+    )
+
+
+def _context_waiting_for_leave_type(history: list[dict]) -> dict | None:
+    """Find an earlier turn that asked which leave type to use."""
+    for item in reversed(history):
+        context = item.get("context") if isinstance(item, dict) else None
+        if item.get("role") == "assistant" and isinstance(context, dict):
+            if _waiting_for_leave_type(context):
+                return context
+    return None
 
 
 def _latest_context(history: list[dict]) -> dict:

@@ -35,13 +35,6 @@ APPROVAL_REPLY_NOTE = (
     "is approved."
 )
 
-WEEKLY_OFF_REPLY_NOTE = (
-    "Note: The leave policy excludes weekly offs, but it does not define which "
-    "weekdays are weekly offs. Holiday List - 2026.pdf says mandatory leave is "
-    "enforced on Saturdays and Sundays. The documents do not explicitly state "
-    "that a weekly off is Saturday or Sunday, so no weekend assumption was applied."
-)
-
 TOOL_POLICY_SEARCH = "Policy Search"
 TOOL_LEAVE_BALANCE = "Leave Balance"
 TOOL_LEAVE_HISTORY = "Leave History"

@@ -88,13 +88,17 @@ HOLIDAY_RULE = (
 
 HOLIDAY_LIST_DOCUMENT = "Holiday List - 2026.pdf"
 
-WEEKLY_OFF_WARNING = (
-    "The leave policy says a weekly off inside the leave period is not counted "
-    f"as leave ({POLICY_DOCUMENT}, section 7.3, page 8; FAQ 19, page 11). "
-    f"{HOLIDAY_LIST_DOCUMENT} says mandatory leave is enforced on Saturdays and "
-    "Sundays. The documents do not explicitly state that a weekly off is "
-    "Saturday or Sunday, so Saturday and Sunday were not removed."
+# The office is closed every Saturday and Sunday. Section 7.3 says a weekly
+# off inside a leave period is not counted, and the holiday list requires
+# mandatory leave on those two days.
+WEEKLY_OFF_RULE = (
+    "Saturday and Sunday are weekly offs. The office is closed on those days, "
+    "so they are not counted as leave "
+    f"({POLICY_DOCUMENT}, section 7.3, page 8; FAQ 19, page 11; "
+    f"{HOLIDAY_LIST_DOCUMENT})."
 )
+
+WEEKLY_OFF_WARNING = WEEKLY_OFF_RULE
 
 HOLIDAY_DATA_WARNING = (
     "Public holiday dates in this count come from "

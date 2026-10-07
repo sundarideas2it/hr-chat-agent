@@ -39,7 +39,6 @@ from agent.prompts import (
     TOOL_POLICY_SEARCH,
     UNKNOWN_REQUEST_REPLY,
     UNSUPPORTED_SALARY_REPLY,
-    WEEKLY_OFF_REPLY_NOTE,
 )
 from agent.state import HRAgentState
 from rag.answer import answer_policy_question
@@ -50,7 +49,7 @@ from tools.errors import LeaveToolError
 from tools.holidays import get_holidays
 from tools.leave_balance import get_leave_balance, get_leave_history
 from tools.leave_calculator import calculate_leave_days
-from tools.policy_rules import DEFAULT_LEAVE_YEAR, HOLIDAY_DATA_WARNING
+from tools.policy_rules import DEFAULT_LEAVE_YEAR
 from tools.policy_search import search_hr_policy
 
 # Stop the page from staying on Running while the Gemini client sleeps
@@ -400,8 +399,6 @@ def _format_balance(result: dict) -> str:
             f"Used: {_days(item['used'])}",
             f"Remaining: {_days(item['remaining'])}",
         ]
-        if item.get("note"):
-            lines.append(item["note"])
         return "\n".join(lines)
 
     lines = [f"Your leave balances for {year}:"]
@@ -411,8 +408,6 @@ def _format_balance(result: dict) -> str:
             f"entitled {item['entitled']}, used {item['used']}, "
             f"remaining {item['remaining']}"
         )
-        if item["leave_type"] == "PL" and item.get("note"):
-            lines.append(f"  {item['note']}")
     return "\n".join(lines)
 
 
@@ -440,18 +435,19 @@ def _format_calculation(calculation: dict) -> str:
         )
     ]
     excluded = calculation.get("excluded_dates") or []
-    if len(excluded) == 1:
-        lines.append(f"{excluded[0]['name']} is excluded as a public holiday.")
-    elif excluded:
-        names = " and ".join(item["name"] for item in excluded)
+    holidays = [item for item in excluded if item.get("reason") == "public holiday"]
+    weekly_offs = [item for item in excluded if item.get("reason") == "weekly off"]
+    if len(holidays) == 1:
+        lines.append(f"{holidays[0]['name']} is excluded as a public holiday.")
+    elif holidays:
+        names = " and ".join(item["name"] for item in holidays)
         lines.append(f"{names} are excluded as public holidays.")
     else:
         lines.append("No company holiday falls in this range.")
+    off_line = _weekly_off_line(weekly_offs)
+    if off_line:
+        lines.append(off_line)
     lines.append(f"Chargeable leave: {_days(chargeable)}.")
-    lines.append(WEEKLY_OFF_REPLY_NOTE)
-    lines.append(HOLIDAY_DATA_WARNING)
-    for rule in calculation.get("applied_rules") or []:
-        lines.append(f"Rule: {rule}")
     return "\n".join(lines)
 
 
@@ -461,9 +457,16 @@ def _format_eligibility(state: HRAgentState) -> str:
     requested = result["requested_days"]
     remaining = result["remaining_balance"]
     lines: list[str] = []
-    if state.get("calculation"):
-        lines.append(_format_calculation(state["calculation"]))
+    calculation = state.get("calculation")
+    if calculation:
+        lines.append(_format_calculation(calculation))
         lines.append("")
+    if calculation and calculation.get("chargeable_leave_days") == 0:
+        lines.append(
+            f"No {leave_name} is charged. Every day in this range is a "
+            "weekly off or a public holiday."
+        )
+        return "\n".join(lines)
     if result.get("eligible"):
         lines.append(
             f"You have {_days(remaining)} of {leave_name} remaining and this "
@@ -483,8 +486,6 @@ def _format_eligibility(state: HRAgentState) -> str:
             "the available balance is insufficient."
         )
     lines.append(APPROVAL_REPLY_NOTE)
-    for constraint in result.get("policy_constraints") or []:
-        lines.append(f"Policy: {constraint['rule']} ({constraint['source']})")
     return "\n".join(lines)
 
 
@@ -526,9 +527,24 @@ def _format_policy(policy: dict) -> str:
     return "\n".join(lines)
 
 
+def _weekly_off_line(weekly_offs: list[dict]) -> str:
+    names: list[str] = []
+    for item in weekly_offs:
+        name = item.get("name") or "Weekly off"
+        if name not in names:
+            names.append(name)
+    if not names:
+        return ""
+    if len(names) == 1:
+        return f"{names[0]} is excluded as a weekly off."
+    return f"{' and '.join(names)} are excluded as weekly offs."
+
+
 def _span_label(start_iso: str, end_iso: str) -> str:
     start = date.fromisoformat(start_iso)
     end = date.fromisoformat(end_iso)
+    if start == end:
+        return f"{start.day} {start.strftime('%B %Y')}"
     if start.year == end.year and start.month == end.month:
         return f"{start.day}–{end.day} {start.strftime('%B %Y')}"
     if start.year == end.year:
