@@ -83,9 +83,6 @@ def _render_chat(employee: dict) -> None:
     for message in st.session_state["messages"]:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            tools_used = message.get("tools_used") or []
-            if tools_used:
-                st.markdown("Tools used:\n" + "\n".join(f"- {name}" for name in tools_used))
 
     prompt = st.chat_input("Ask about leave or HR policy")
     if not prompt:

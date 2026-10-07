@@ -32,7 +32,8 @@ _BALANCE = re.compile(
     re.IGNORECASE,
 )
 _POLICY = re.compile(
-    r"\b(policy|policies|work from home|wfh|encash\w*|carry forward|carried forward)\b",
+    r"\b(policy|policies|work from home|wfh|encash\w*|carry forward|carried forward|"
+    r"carry over|accumulat\w*|lapse\w*)\b",
     re.IGNORECASE,
 )
 _HOLIDAY_FACT = re.compile(
@@ -57,6 +58,18 @@ _PERSONAL = re.compile(
     r"\b(balance|balances|history|remaining|eligible|eligibility|request|requests|"
     r"used|entitled|record|records|salary|show|my leave)\b",
     re.IGNORECASE,
+)
+_GREETING = re.compile(
+    r"(hi+|hello|hey|hai|hiya|greetings|good (morning|afternoon|evening|day))"
+    r"( there| all| everyone| team)?( \w+)?"
+)
+_THANKS = re.compile(
+    r"((ok|okay|great|cool|super|nice) )?(thanks|thank you|thank u|thanku|thx|ty)"
+    r"( (so|very) much| a lot)?( \w+)?( (bye|goodbye))?"
+)
+_FAREWELL = re.compile(
+    r"((ok|okay) )?(bye|bye bye|goodbye|good bye|see you|see ya|good night|take care)"
+    r"( \w+)?"
 )
 _DAYS = re.compile(r"\b(\d+(?:\.\d+)?)\s+days?\b", re.IGNORECASE)
 _YEAR = re.compile(r"\b(20\d{2})\b")
@@ -121,6 +134,8 @@ def classify_message(message: str, employee: dict, history: list[dict] | None) -
         return _decision("unknown", error=str(exc))
     if mentions_other:
         return _decision("privacy")
+    if small_talk(text):
+        return _decision("small_talk")
 
     explicit = _explicit_intent(text)
     parsed_type = _leave_type(text)
@@ -244,10 +259,33 @@ def _context_waiting_for_leave_type(history: list[dict]) -> dict | None:
     return None
 
 
+def small_talk(text: str) -> tuple[str, str] | None:
+    """Return (kind, phrase) when the whole message is a greeting, thanks, or goodbye.
+
+    A greeting followed by a question, such as "Hi, what is my balance?",
+    is not small talk and goes to the tool path instead.
+    """
+    cleaned = " ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())
+    if not cleaned:
+        return None
+    if _FAREWELL.fullmatch(cleaned):
+        return ("farewell", "good night" if "good night" in cleaned else "goodbye")
+    if _THANKS.fullmatch(cleaned):
+        if re.search(r"\b(bye|goodbye)\b", cleaned):
+            return ("farewell", "goodbye")
+        return ("thanks", "thanks")
+    match = _GREETING.fullmatch(cleaned)
+    if match:
+        return ("greeting", f"good {match.group(2)}" if match.group(2) else "hi")
+    return None
+
+
 def _latest_context(history: list[dict]) -> dict:
     for item in reversed(history):
         context = item.get("context") if isinstance(item, dict) else None
         if item.get("role") == "assistant" and isinstance(context, dict):
+            if context.get("intent") == "small_talk":
+                continue
             return context
     return {}
 
@@ -257,6 +295,9 @@ def _explicit_intent(text: str) -> str | None:
         return "history"
     if _ELIGIBILITY.search(text):
         return "eligibility"
+    # "How many days will be carried forward?" is a policy question, not a date count.
+    if _POLICY.search(text) and not _DATE_PATTERN.search(text):
+        return "policy"
     if _CALCULATION.search(text):
         return "calculation"
     if _BALANCE.search(text):

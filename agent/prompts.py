@@ -30,6 +30,16 @@ UNKNOWN_REQUEST_REPLY = (
     "leave eligibility, and HR policy questions."
 )
 
+GREETING_HELP = (
+    "I can help with your leave balance, leave history, leave-day calculations, "
+    "leave eligibility, company holidays, and HR policy questions. "
+    'For example, ask "What is my Casual Leave balance?"'
+)
+
+THANKS_REPLY = "You're welcome, {name}. Let me know if you need anything else."
+
+FAREWELL_REPLY = "{closing}, {name}. Take care!"
+
 APPROVAL_REPLY_NOTE = (
     "Manager approval is still required. Eligibility does not mean the leave "
     "is approved."

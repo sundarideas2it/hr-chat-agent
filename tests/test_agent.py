@@ -94,6 +94,55 @@ class AgentGraphTests(unittest.TestCase):
         self.assertEqual(other["tools_used"], [])
         self.assertNotIn("3 days", vismitha["reply"])
 
+    def test_greetings_thanks_and_goodbye_get_a_friendly_reply(self) -> None:
+        with patch("agent.graph.search_hr_policy") as search:
+            hi = run_agent("Hi", self.employee)
+            morning = run_agent("Good morning!", self.employee)
+            thanks = run_agent("Thank you so much", self.employee)
+            bye = run_agent("bye", self.employee)
+        search.assert_not_called()
+        self.assertTrue(hi["reply"].startswith("Hi, Khavish!"))
+        self.assertIn("leave balance", hi["reply"])
+        self.assertTrue(morning["reply"].startswith("Good morning, Khavish!"))
+        self.assertEqual(thanks["reply"], "You're welcome, Khavish. Let me know if you need anything else.")
+        self.assertEqual(bye["reply"], "Goodbye, Khavish. Take care!")
+        for result in (hi, morning, thanks, bye):
+            self.assertEqual(result["tools_used"], [])
+
+    def test_greeting_with_a_question_still_uses_the_tool(self) -> None:
+        result = run_agent("Hi, what is my casual leave balance?", self.employee)
+        self.assertEqual(result["tools_used"], ["Leave Balance"])
+        self.assertIn("Remaining: 4 days", result["reply"])
+
+    def test_thanks_between_turns_keeps_the_pending_dates(self) -> None:
+        first = run_agent("Can I take leave on 19 oct?", self.employee)
+        history = [
+            {"role": "user", "content": "Can I take leave on 19 oct?"},
+            {"role": "assistant", "content": first["reply"], "context": first["context"]},
+        ]
+        thanks = run_agent("ok thanks", self.employee, history)
+        history += [
+            {"role": "user", "content": "ok thanks"},
+            {"role": "assistant", "content": thanks["reply"], "context": thanks["context"]},
+        ]
+        result = run_agent("casual", self.employee, history)
+        self.assertIn("19 October 2026", result["reply"])
+        self.assertIn("Ayudha Poojai", result["reply"])
+
+    def test_earned_leave_carry_forward_is_a_policy_question(self) -> None:
+        with patch(
+            "agent.graph._search_and_answer",
+            return_value={"found": True, "answer": "Up to 8 days.", "sources": []},
+        ) as policy:
+            result = run_agent(
+                "I have 18 days earned leave. how many days will be carry forward to "
+                "the next year? when can I reach 20 days earned leave?",
+                self.employee,
+            )
+        policy.assert_called_once()
+        self.assertEqual(result["tools_used"], ["Policy Search"])
+        self.assertNotIn("start and end dates", result["reply"])
+
     def test_own_employee_code_still_reads_emp001(self) -> None:
         result = run_agent("What is EMP001's casual leave balance?", self.employee)
         self.assertIn("Remaining: 4 days", result["reply"])
@@ -501,7 +550,7 @@ class AgentGraphTests(unittest.TestCase):
         app.chat_input[0].set_value("What is my casual leave balance?").run()
         visible = " ".join(widget.value for widget in app.markdown)
         self.assertIn("Remaining: 4 days", visible)
-        self.assertIn("Leave Balance", visible)
+        self.assertNotIn("Tools used", visible)
         self.assertNotIn("EMP002", visible)
         self.assertNotIn("Vismitha", visible)
         self.assertGreaterEqual(len(app.session_state["messages"]), 2)

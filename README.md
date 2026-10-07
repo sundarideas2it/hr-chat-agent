@@ -143,7 +143,7 @@ Sign in as `EMP001` / `Demo@123`. Example questions are shown in the chat and ar
 - Can I take Casual Leave from 24 Jan to 27 Jan 2026?
 - Show my leave history.
 
-The Tools used list under an answer names the tools that ran. It does not show hidden reasoning. A Developer Demo expander still exposes the direct leave-tool buttons for the signed-in employee.
+The chat shows only the answer. `run_agent` still returns the names of the tools that ran, and the tests check them. A Developer Demo expander still exposes the direct leave-tool buttons for the signed-in employee.
 
 Run the local tests, which do not call Gemini:
 

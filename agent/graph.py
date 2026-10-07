@@ -26,10 +26,13 @@ from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from agent.intent import classify_message, policy_search_query
+from agent.intent import classify_message, policy_search_query, small_talk
 from agent.prompts import (
     APPROVAL_REPLY_NOTE,
     CROSS_EMPLOYEE_REFUSAL,
+    FAREWELL_REPLY,
+    GREETING_HELP,
+    THANKS_REPLY,
     TOOL_ELIGIBILITY,
     TOOL_HOLIDAY_LOOKUP,
     TOOL_LEAVE_BALANCE,
@@ -93,9 +96,23 @@ def select_intent(state: HRAgentState) -> dict:
         update["reply"] = CROSS_EMPLOYEE_REFUSAL
     elif decision["intent"] == "unsupported":
         update["reply"] = UNSUPPORTED_SALARY_REPLY
+    elif decision["intent"] == "small_talk":
+        update["reply"] = _small_talk_reply(
+            state.get("message") or "", state.get("employee") or {}
+        )
     elif decision["intent"] == "unknown":
         update["reply"] = UNKNOWN_REQUEST_REPLY
     return update
+
+
+def _small_talk_reply(message: str, employee: dict) -> str:
+    kind, phrase = small_talk(message) or ("greeting", "hi")
+    name = employee.get("name") or "there"
+    if kind == "thanks":
+        return THANKS_REPLY.format(name=name)
+    if kind == "farewell":
+        return FAREWELL_REPLY.format(closing=phrase.capitalize(), name=name)
+    return f"{phrase.capitalize()}, {name}! {GREETING_HELP}"
 
 
 def route_after_intent(state: HRAgentState) -> str:
